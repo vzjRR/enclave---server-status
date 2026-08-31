@@ -33,7 +33,10 @@ module.exports = {
   statusChannelId: (process.env.STATUS_CHANNEL_ID || '').trim(),
   staffRoleIds: listEnv('STAFF_ROLE_ID'),
 
-  fivemJoinCode: (process.env.FIVEM_JOIN_CODE || '').trim(),
+  // Comma-separated — every configured code is checked on each poll and
+  // whichever one answers wins, so a stale/wrong code alongside a good one
+  // is harmless rather than something that has to be picked correctly.
+  fivemJoinCodes: listEnv('FIVEM_JOIN_CODE'),
 
   checkIntervalMs: intEnv('CHECK_INTERVAL_MS', 60_000),
   failureThreshold: intEnv('FAILURE_THRESHOLD', 2),

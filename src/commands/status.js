@@ -11,7 +11,7 @@ const data = new SlashCommandBuilder()
 async function execute(interaction) {
   await interaction.deferReply();
 
-  const status = await checkStatus(config.fivemJoinCode);
+  const status = await checkStatus(config.fivemJoinCodes);
 
   const embed = new EmbedBuilder()
     .setColor(status.online ? 0x57f287 : 0xed4245)

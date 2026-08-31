@@ -50,7 +50,7 @@ async function sendAlert(client, payload, label) {
 }
 
 async function tick(client) {
-  const status = await checkStatus(config.fivemJoinCode);
+  const status = await checkStatus(config.fivemJoinCodes);
 
   if (status.online) {
     consecutiveSuccesses += 1;

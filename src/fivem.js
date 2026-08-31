@@ -24,7 +24,9 @@ const JOIN_BASE = process.env.FIVEM_JOIN_BASE || 'https://cfx.re/join';
 const LIST_BASE = process.env.FIVEM_LIST_BASE
   || 'https://servers-frontend.fivem.net/api/servers/single';
 
-let addressCache = { url: null, expiresAt: 0 };
+// Keyed by join code — more than one may be configured (e.g. while
+// migrating from an old code to a new one) and each resolves independently.
+const addressCache = new Map();
 
 async function getJson(url, { headers } = {}) {
   const controller = new AbortController();
@@ -45,8 +47,9 @@ async function getJson(url, { headers } = {}) {
 
 /** Resolve a join code to the server's current base URL (cached per Cfx.re's own TTL). */
 async function resolveAddress(joinCode) {
-  if (addressCache.url && Date.now() < addressCache.expiresAt) {
-    return addressCache.url;
+  const cached = addressCache.get(joinCode);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.url;
   }
 
   const controller = new AbortController();
@@ -66,8 +69,9 @@ async function resolveAddress(joinCode) {
       ? maxAge * 1000
       : ADDRESS_TTL_FALLBACK_MS;
 
-    addressCache = { url: url.replace(/\/+$/, ''), expiresAt: Date.now() + ttl };
-    return addressCache.url;
+    const resolved = { url: url.replace(/\/+$/, ''), expiresAt: Date.now() + ttl };
+    addressCache.set(joinCode, resolved);
+    return resolved.url;
   } catch {
     return null;
   } finally {
@@ -122,10 +126,7 @@ async function fetchListing(joinCode) {
   };
 }
 
-/** One status check. Not cached — the caller (the poll loop) controls cadence. */
-async function checkStatus(joinCode) {
-  if (!joinCode) return emptyStatus('not-configured');
-
+async function checkOne(joinCode) {
   const address = await resolveAddress(joinCode);
 
   const [direct, listing] = await Promise.all([
@@ -138,6 +139,20 @@ async function checkStatus(joinCode) {
     return emptyStatus(address ? 'unreachable' : 'unresolved');
   }
   return status;
+}
+
+/**
+ * One status check, across every configured join code at once (useful
+ * during a migration from an old code to a new one, or when it's unclear
+ * which one is still live — whichever answers wins). Not cached itself —
+ * the caller (the poll loop) controls cadence.
+ */
+async function checkStatus(joinCodes) {
+  const codes = (Array.isArray(joinCodes) ? joinCodes : [joinCodes]).filter(Boolean);
+  if (!codes.length) return emptyStatus('not-configured');
+
+  const results = await Promise.all(codes.map(checkOne));
+  return results.find((result) => result.online) || results[0];
 }
 
 module.exports = { checkStatus, resolveAddress };

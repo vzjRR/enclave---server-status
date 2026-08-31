@@ -15,7 +15,7 @@ if (!config.statusChannelId) {
   console.error('STATUS_CHANNEL_ID is not set. The bot has nowhere to post alerts.');
   process.exit(1);
 }
-if (!config.fivemJoinCode) {
+if (!config.fivemJoinCodes.length) {
   console.error('FIVEM_JOIN_CODE is not set. The bot has no server to watch.');
   process.exit(1);
 }
