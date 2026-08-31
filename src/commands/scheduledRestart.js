@@ -51,11 +51,11 @@ async function execute(interaction) {
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  await channel.send(embeds.scheduledRestart({
+  await statusWatcher.postStatusMessage(interaction.client, embeds.scheduledRestart({
     eta,
     reason,
     announcedBy: interaction.user.tag
-  }));
+  }), 'scheduled-restart');
 
   statusWatcher.noteScheduledRestartAnnounced();
 

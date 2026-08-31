@@ -20,6 +20,7 @@ let consecutiveSuccesses = 0;
 let downSince = null;
 let restartAnnouncedAt = null;
 let pollTimer = null;
+let lastStatusMessageId = null;
 
 function noteScheduledRestartAnnounced() {
   restartAnnouncedAt = Date.now();
@@ -39,14 +40,42 @@ async function getStatusChannel(client) {
   }
 }
 
-async function sendAlert(client, payload, label) {
+/**
+ * Sends a status message to the status channel and deletes whichever one
+ * this bot posted there before it, so the channel always shows exactly one
+ * current status rather than accumulating a history. Shared by every
+ * sender — the automatic watcher below, the txAdmin relay, and the manual
+ * /scheduled-restart command — since a restart notice needs to replace a
+ * down alert just as much as a down alert needs to replace an up one.
+ *
+ * The new message is sent before the old one is deleted, so there's never
+ * a moment with nothing posted at all if the delete is slow or fails.
+ */
+async function postStatusMessage(client, payload, label = 'status') {
   const channel = await getStatusChannel(client);
-  if (!channel) return;
+  if (!channel) return null;
+
+  let sent;
   try {
-    await channel.send(payload);
+    sent = await channel.send(payload);
   } catch (error) {
-    console.error(`Failed to send ${label} alert:`, error?.message || error);
+    console.error(`Failed to send ${label} message:`, error?.message || error);
+    return null;
   }
+
+  const previousId = lastStatusMessageId;
+  lastStatusMessageId = sent.id;
+
+  if (previousId && previousId !== sent.id) {
+    channel.messages.delete(previousId).catch((error) => {
+      // Unknown Message (10008) just means it's already gone — nothing to do.
+      if (error?.code !== 10008) {
+        console.error('Failed to delete previous status message:', error?.message || error);
+      }
+    });
+  }
+
+  return sent;
 }
 
 async function tick(client) {
@@ -74,7 +103,7 @@ async function tick(client) {
     downSince = Date.now();
     const wasScheduledRestart = isWithinRestartWindow();
     console.log(`[status] server went offline${wasScheduledRestart ? ' (scheduled restart)' : ''}`);
-    await sendAlert(client, embeds.serverDown({ hostname: status.hostname, wasScheduledRestart }), 'server-down');
+    await postStatusMessage(client, embeds.serverDown({ hostname: status.hostname, wasScheduledRestart }), 'server-down');
     return;
   }
 
@@ -86,7 +115,7 @@ async function tick(client) {
     if (wasScheduledRestart) restartAnnouncedAt = null;
 
     console.log(`[status] server back online${wasScheduledRestart ? ' (scheduled restart complete)' : ''}`);
-    await sendAlert(client, embeds.serverUp({
+    await postStatusMessage(client, embeds.serverUp({
       hostname: status.hostname,
       players: status.players,
       maxPlayers: status.maxPlayers,
@@ -110,4 +139,4 @@ function stop() {
   pollTimer = null;
 }
 
-module.exports = { start, stop, noteScheduledRestartAnnounced, getStatusChannel };
+module.exports = { start, stop, noteScheduledRestartAnnounced, getStatusChannel, postStatusMessage };

@@ -122,7 +122,13 @@ invite link. The bot never needs `Administrator`.
 
 - **Stateless.** Everything (the debounce counters, the restart grace
   window) is in-memory; a restart of the bot just re-establishes the
-  baseline on its next check. Nothing is written to disk.
+  baseline on its next check. Nothing is written to disk. One consequence:
+  the channel only ever shows the single most recent status message — every
+  new one (down, up, scheduled-restart, restart-cancelled, from any source)
+  deletes whichever one this bot posted before it, rather than piling up a
+  history. A bot restart forgets which message that was, so the very next
+  alert after a restart won't delete an older one, but everything after that
+  goes back to replacing cleanly.
 - **`@everyone` is deliberate here**, per the brief — unlike some of the
   other Enclave bots, which avoid it because ticket creation is
   member-triggered. This bot only pings on a real state change or an

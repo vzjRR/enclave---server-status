@@ -49,11 +49,11 @@ async function handleScheduledRestart(client, payload) {
   if (!config.restartMilestoneMinutes.includes(minutes) || postedMilestones.has(minutes)) return;
   postedMilestones.add(minutes);
 
-  const channel = await statusWatcher.getStatusChannel(client);
-  if (!channel) return;
-
-  await channel.send(embeds.scheduledRestart({ eta: etaText(minutes), reason: null, announcedBy: 'txAdmin' }))
-    .catch((error) => console.error('[restart-webhook] failed to send restart alert:', error?.message || error));
+  await statusWatcher.postStatusMessage(
+    client,
+    embeds.scheduledRestart({ eta: etaText(minutes), reason: null, announcedBy: 'txAdmin' }),
+    'restart-scheduled'
+  );
 
   statusWatcher.noteScheduledRestartAnnounced();
 }
@@ -62,11 +62,11 @@ async function handleRestartSkipped(client, payload) {
   postedMilestones = new Set();
   lastSecondsRemaining = null;
 
-  const channel = await statusWatcher.getStatusChannel(client);
-  if (!channel) return;
-
-  await channel.send(embeds.scheduledRestartSkipped({ author: payload.author || null }))
-    .catch((error) => console.error('[restart-webhook] failed to send restart-skipped notice:', error?.message || error));
+  await statusWatcher.postStatusMessage(
+    client,
+    embeds.scheduledRestartSkipped({ author: payload.author || null }),
+    'restart-skipped'
+  );
 }
 
 function readBody(req, maxBytes = 16 * 1024) {
