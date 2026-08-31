@@ -1,0 +1,46 @@
+[Unit]
+Description=Enclave Server Status - Discord status bot
+Documentation=https://github.com/vzjRR/enclave---server-status
+After=network-online.target
+Wants=network-online.target
+
+# These are [Unit] directives, not [Service] ones. In [Service] systemd logs
+# "Unknown key name" and ignores them, which silently leaves the bot able to
+# restart forever against a broken build.
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=discordbots
+Group=discordbots
+WorkingDirectory=/opt/enclave-server-status
+ExecStart=/usr/bin/node src/index.js
+
+# Credentials come from .env in WorkingDirectory, read by dotenv. Deliberately
+# not an EnvironmentFile: systemd parses quoting differently to dotenv, so
+# having one source avoids the two disagreeing about a token.
+
+# The bot recovers from a crash on its own; the process exits on an uncaught
+# exception precisely so this can restart it with clean state. A restart only
+# loses the in-memory up/down debounce counters and the current
+# /scheduled-restart grace window, both of which rebuild themselves within a
+# couple of checks.
+Restart=always
+RestartSec=10
+
+# Stateless — it only needs to read its own directory, nothing to write.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=enclave-server-status
+
+[Install]
+WantedBy=multi-user.target
