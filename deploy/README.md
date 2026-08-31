@@ -36,6 +36,17 @@ controls the bot.
 Set `STAFF_ROLE_ID` (comma-separated for more than one) if staff who run
 `/scheduled-restart` do not already have the **Manage Server** permission.
 
+To make scheduled-restart alerts automatic (from txAdmin, rather than a
+manual `/scheduled-restart`), also set `RESTART_WEBHOOK_SECRET` (and
+`RESTART_WEBHOOK_PORT` if you want something other than the default 8787),
+then install [`fivem/txadmin_restart_relay`](../fivem/txadmin_restart_relay)
+on the game server — see that resource's README. If the bot and the game
+server are on the same box (the common case), no firewall change is
+needed: `RESTART_WEBHOOK_HOST` defaults to loopback. If they're on
+different hosts, put a reverse proxy with TLS in front of the relay port
+rather than exposing it directly, and point `Config.RelayUrl` in the FiveM
+resource's `config.lua` at that instead.
+
 ## 3. Bot permissions
 
 Invite the bot with, at minimum, **View Channel**, **Send Messages**,

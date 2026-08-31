@@ -102,4 +102,28 @@ function scheduledRestart({ eta, reason, announcedBy }) {
   return { content: PING_CONTENT, embeds: [embed], allowedMentions: { parse: ['everyone'] } };
 }
 
-module.exports = { serverDown, serverUp, scheduledRestart };
+// No @everyone here, deliberately — a cancellation is a relief, not an
+// emergency, and the audience already got pinged once for the restart itself.
+function scheduledRestartSkipped({ author }) {
+  const byLineEn = author ? ` by **${author}**` : '';
+  const byLineAr = author ? ` بواسطة **${author}**` : '';
+
+  const embed = new EmbedBuilder()
+    .setColor(0x5865f2) // Discord blurple — informational, not an alert
+    .setTitle('ℹ️ Restart Cancelled — تم إلغاء إعادة التشغيل')
+    .setDescription(
+      [
+        `**English**`,
+        `The upcoming scheduled restart was cancelled${byLineEn}. No action needed.`,
+        '',
+        `**العربية**`,
+        `تم إلغاء إعادة التشغيل المجدولة القادمة${byLineAr}. لا حاجة لأي إجراء.`
+      ].join('\n')
+    )
+    .setFooter({ text: BRAND_FOOTER })
+    .setTimestamp();
+
+  return { embeds: [embed] };
+}
+
+module.exports = { serverDown, serverUp, scheduledRestart, scheduledRestartSkipped };

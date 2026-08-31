@@ -5,7 +5,8 @@ Enclave RP FiveM server and posts bilingual (English / Arabic) alerts to
 `#server-status` — with `@everyone` — whenever something changes:
 
 - 🔴 the server **goes down**
-- 🛠️ a **scheduled restart** is announced (staff-triggered)
+- 🛠️ a **scheduled restart** is announced — automatically from **txAdmin's**
+  own restart scheduler, or on demand via `/scheduled-restart`
 - 🟢 the server **comes back up** — worded as "restart complete" instead of
   "back online" when it followed a scheduled restart within its grace window
 
@@ -28,15 +29,43 @@ online/offline state machine:
 - The very first check after the bot starts only establishes a silent
   baseline — a restart of the bot itself never announces "back online".
 
-## `/scheduled-restart`
+## Scheduled restarts
 
-Staff run `/scheduled-restart eta:"in 10 minutes" reason:"weekly update"` to
-post the restart announcement. That also opens a grace window
-(`RESTART_WINDOW_MINUTES`, default 30): the next down → up cycle inside that
-window is reported as *the announced restart* rather than an unplanned
+There are two ways a restart gets announced, and both open the same grace
+window (`RESTART_WINDOW_MINUTES`, default 30): the next down → up cycle
+inside it is reported as *the announced restart* rather than an unplanned
 outage, in both the down and the up message.
 
-Requires **Manage Server**, or a role listed in `STAFF_ROLE_ID`.
+### Automatic, from txAdmin (the important one)
+
+If the FiveM server runs txAdmin — it does, txAdmin ships with FXServer —
+its own **Restart Scheduler** (Settings → General → Scheduled Restarts)
+already fires internal events on a countdown before every restart it runs.
+The [`txadmin_restart_relay`](fivem/txadmin_restart_relay) FiveM resource
+listens for those and forwards them to this bot's relay endpoint
+(`src/restartWebhook.js`), which turns them into the same bilingual
+`@everyone` announcement — no staff action needed, no txAdmin-side Discord
+setup at all.
+
+txAdmin counts down at 30/15/10/5/4/3/2/1 minutes before the restart,
+firing an event at every one of those marks; posting on all eight would
+spam the channel, so only the minute marks in `RESTART_WEBHOOK_MILESTONES`
+(default `15,1`) actually produce a message. If an admin cancels the
+restart from the txAdmin panel, a quiet (no `@everyone`) cancellation
+notice goes out too.
+
+See [`fivem/txadmin_restart_relay/README.md`](fivem/txadmin_restart_relay/README.md)
+for the game-server-side install (one resource folder + two lines in
+`server.cfg`) and [`RESTART_WEBHOOK_*`](#configuration) below for the bot side.
+
+### Manual, via `/scheduled-restart`
+
+For anything txAdmin's scheduler doesn't cover — a one-off restart, a
+maintenance window pushed from the panel directly rather than the
+scheduler — staff run
+`/scheduled-restart eta:"in 10 minutes" reason:"weekly update"` to post the
+same announcement by hand. Requires **Manage Server**, or a role listed in
+`STAFF_ROLE_ID`.
 
 ## `/status`
 
@@ -79,11 +108,15 @@ invite link. The bot never needs `Administrator`.
 | `GUILD_ID` | Enclave RP guild | Register commands instantly to one guild; the bot ignores interactions from any other. |
 | `STATUS_CHANNEL_ID` | `1536824170720133150` | Where every alert is posted. |
 | `STAFF_ROLE_ID` | empty | Role(s), comma-separated, additionally allowed to run `/scheduled-restart`. |
-| `FIVEM_JOIN_CODE` | `dggpkvq` | The `cfx.re/join/<code>` for the server being watched. |
+| `FIVEM_JOIN_CODE` | `zjjp6m4` | The `cfx.re/join/<code>` for the server being watched. |
 | `CHECK_INTERVAL_MS` | `60000` | How often to check. |
 | `FAILURE_THRESHOLD` | `2` | Consecutive failed checks before announcing "down". |
 | `RECOVERY_THRESHOLD` | `1` | Consecutive successful checks before announcing "back up". |
-| `RESTART_WINDOW_MINUTES` | `30` | How long after `/scheduled-restart` a down→up cycle counts as that restart. |
+| `RESTART_WINDOW_MINUTES` | `30` | How long after a restart announcement (automatic or manual) a down→up cycle counts as that restart. |
+| `RESTART_WEBHOOK_PORT` | unset (disabled) | Port for the txAdmin relay endpoint. Unset = that automatic path is off; `/scheduled-restart` is unaffected either way. |
+| `RESTART_WEBHOOK_HOST` | `127.0.0.1` | Interface the relay endpoint binds. Only widen if the game server is on a different host. |
+| `RESTART_WEBHOOK_SECRET` | empty | Shared secret the relay resource authenticates with. Required for the endpoint to start. |
+| `RESTART_WEBHOOK_MILESTONES` | `15,1` | Minutes-before-restart to actually post an alert for, out of txAdmin's fixed 30/15/10/5/4/3/2/1 countdown. |
 
 ## Notes
 
@@ -98,6 +131,11 @@ invite link. The bot never needs `Administrator`.
 - **Runs alongside other Enclave bots.** `GUILD_ID` scopes interaction
   handling to the one guild, the same convention `enclave-tickets-bot` uses,
   so this token never needs to be the only bot in the server.
+- **The relay endpoint is unauthenticated-off by design.** If
+  `RESTART_WEBHOOK_SECRET` isn't set, `restartWebhook.start()` refuses to
+  bind the port at all rather than listening without auth — a stray open
+  HTTP port that lets anyone POST a fake "server restarting" `@everyone` is
+  worse than the feature not running.
 
 ## Scripts
 

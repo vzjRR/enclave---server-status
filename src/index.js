@@ -3,6 +3,7 @@
 const { Client, GatewayIntentBits, Events, MessageFlags } = require('discord.js');
 const config = require('./config');
 const statusWatcher = require('./statusWatcher');
+const restartWebhook = require('./restartWebhook');
 const scheduledRestart = require('./commands/scheduledRestart');
 const status = require('./commands/status');
 
@@ -36,6 +37,7 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 client.once(Events.ClientReady, (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
   statusWatcher.start(readyClient);
+  restartWebhook.start(readyClient);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
