@@ -4,8 +4,10 @@ FiveM server-side resource that listens for txAdmin's own
 `txAdmin:events:scheduledRestart` / `txAdmin:events:scheduledRestartSkipped`
 events and relays them, over a shared-secret-authenticated HTTP POST, to the
 Server Status Discord bot's relay endpoint (`../../src/restartWebhook.js`)
-— which is what turns them into the bilingual `@everyone` announcement in
-the status channel.
+— which uses them to keep the bot's live status card's **NEXT RESTART**
+field accurate. It does not post anything to Discord by itself; the
+`@everyone` alerts are manual, staff-triggered commands (`/server-down`,
+`/server-up`, `/scheduled-restart`).
 
 ## Install
 
@@ -26,20 +28,15 @@ scheduler (Settings → General → Scheduled Restarts) already fires the
 events this resource listens for; nothing about how you configure restart
 times needs to change.
 
-## Why relay through this bot instead of pointing txAdmin's own Discord webhook at the channel
+## What this actually does
 
-txAdmin can post directly to a Discord webhook itself (Settings → Discord).
-That's simpler to set up but the notice would come from a different bot
-identity, in whatever single language txAdmin's locale is set to, and
-txAdmin has no notion of `@everyone` or of this bot's up/down tracking.
-Routing the same events through this bot instead means:
-
-- The message matches every other alert this bot sends — bilingual,
-  branded, colored, `@everyone`.
-- A restart that takes the server down and back up gets correctly reported
-  as *the announced restart* rather than an unplanned outage (see
-  `RESTART_WINDOW_MINUTES` in the bot's `.env` — the up/down watcher and
-  this relay share that state).
+Every `scheduledRestart` fire updates an in-memory countdown; the status
+card reads it on its own refresh and shows "in X hrs, Y mins" instead of
+"Not scheduled" once a restart is imminent. A `scheduledRestartSkipped`
+event (an admin cancels the restart from the txAdmin panel) clears that
+countdown back to "Not scheduled." Nothing here posts a message, pings
+anyone, or touches the manual alert commands — it only ever changes what
+one field on the card shows.
 
 ## Notes
 

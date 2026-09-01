@@ -3,9 +3,16 @@
 const { REST, Routes } = require('discord.js');
 const config = require('./config');
 const scheduledRestart = require('./commands/scheduledRestart');
+const serverDown = require('./commands/serverDown');
+const serverUp = require('./commands/serverUp');
 const status = require('./commands/status');
 
-const commands = [scheduledRestart.data.toJSON(), status.data.toJSON()];
+const commands = [
+  scheduledRestart.data.toJSON(),
+  serverDown.data.toJSON(),
+  serverUp.data.toJSON(),
+  status.data.toJSON()
+];
 
 async function main() {
   if (!config.token) throw new Error('DISCORD_TOKEN is not set.');

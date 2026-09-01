@@ -4,7 +4,10 @@ const { Client, GatewayIntentBits, Events, MessageFlags } = require('discord.js'
 const config = require('./config');
 const statusWatcher = require('./statusWatcher');
 const restartWebhook = require('./restartWebhook');
+const statusCard = require('./statusCard');
 const scheduledRestart = require('./commands/scheduledRestart');
+const serverDown = require('./commands/serverDown');
+const serverUp = require('./commands/serverUp');
 const status = require('./commands/status');
 
 if (!config.token) {
@@ -22,6 +25,8 @@ if (!config.fivemJoinCodes.length) {
 
 const COMMANDS = new Map([
   [scheduledRestart.data.name, scheduledRestart],
+  [serverDown.data.name, serverDown],
+  [serverUp.data.name, serverUp],
   [status.data.name, status]
 ]);
 
@@ -34,10 +39,11 @@ function isAllowedGuild(guildId) {
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-client.once(Events.ClientReady, (readyClient) => {
+client.once(Events.ClientReady, async (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
-  statusWatcher.start(readyClient);
-  restartWebhook.start(readyClient);
+  restartWebhook.start();
+  await statusWatcher.start();
+  statusCard.start(readyClient);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {

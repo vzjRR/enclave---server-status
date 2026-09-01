@@ -2,128 +2,102 @@
 
 const { EmbedBuilder } = require('discord.js');
 
-const BRAND_FOOTER = 'Enclave RP | Server Status';
-
 const COLOR_DOWN = 0xed4245; // Discord red
 const COLOR_UP = 0x57f287; // Discord green
 const COLOR_RESTART = 0xfaa61a; // Discord orange
 
-function fmtDuration(ms) {
-  const totalMinutes = Math.max(1, Math.round(ms / 60_000));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours === 0) return `${minutes}m`;
-  return `${hours}h ${minutes}m`;
-}
-
 /** @everyone lives in message content, not the embed — that's what actually pings. */
 const PING_CONTENT = '@everyone';
 
-function serverDown({ hostname, wasScheduledRestart }) {
-  const enBody = wasScheduledRestart
-    ? `The Enclave RP server${hostname ? ` (**${hostname}**)` : ''} has gone offline for the **scheduled restart** announced earlier. It should be back shortly.`
-    : `The Enclave RP server${hostname ? ` (**${hostname}**)` : ''} appears to be **offline**. We are looking into it — updates will follow in this channel.`;
-  const arBody = wasScheduledRestart
-    ? `توقف سيرفر Enclave RP${hostname ? ` (**${hostname}**)` : ''} الآن من أجل **إعادة التشغيل المجدولة** التي تم الإعلان عنها سابقاً. سيعود قريباً.`
-    : `يبدو أن سيرفر Enclave RP${hostname ? ` (**${hostname}**)` : ''} **متوقف حالياً**. الفريق يعمل على معرفة السبب، وسيتم تحديثكم في هذه القناة.`;
+// The three manual alert messages, verbatim per the exact Arabic wording
+// given for this bot — these are staff-triggered (/server-down, /server-up,
+// /scheduled-restart), not auto-posted on a detected state change.
 
+function serverDown() {
   const embed = new EmbedBuilder()
     .setColor(COLOR_DOWN)
-    .setTitle('🔴 Server Offline — السيرفر متوقف')
     .setDescription(
       [
-        `**English**`,
-        enBody,
+        '**الحالة:** 🔴 مغلق مؤقتًا',
+        '**السبب:** 🛠️ صيانة دورية',
+        '**العودة:** سيتم الإعلان عنها عند الانتهاء',
         '',
-        `**العربية**`,
-        arBody
+        '**ENCLAVE RP | نعمل على تقديم تجربة أفضل لكم.**'
       ].join('\n')
-    )
-    .setFooter({ text: BRAND_FOOTER })
-    .setTimestamp();
+    );
 
   return { content: PING_CONTENT, embeds: [embed], allowedMentions: { parse: ['everyone'] } };
 }
 
-function serverUp({ hostname, players, maxPlayers, downtimeMs, wasScheduledRestart }) {
-  const playerLine = maxPlayers
-    ? `👥 ${players}/${maxPlayers}`
-    : `👥 ${players}`;
-
-  const enIntro = wasScheduledRestart
-    ? 'The scheduled restart is complete and the server is **back online**.'
-    : 'The Enclave RP server is **back online**.';
-  const arIntro = wasScheduledRestart
-    ? 'اكتملت **إعادة التشغيل المجدولة** والسيرفر **يعمل الآن**.'
-    : 'سيرفر Enclave RP **يعمل الآن**.';
-
-  const downtimeLine = downtimeMs
-    ? `\nDowntime: **${fmtDuration(downtimeMs)}** — مدة التوقف: **${fmtDuration(downtimeMs)}**`
-    : '';
-
+function serverUp() {
   const embed = new EmbedBuilder()
     .setColor(COLOR_UP)
-    .setTitle('🟢 Server Online — السيرفر يعمل الآن')
     .setDescription(
       [
-        `**English**`,
-        `${enIntro} Jump back in! ${playerLine}`,
+        '🎮 **السيرفر متاح للدخول**',
         '',
-        `**العربية**`,
-        `${arIntro} تفضلوا بالدخول! ${playerLine}`,
-        downtimeLine
-      ].join('\n').trim()
-    )
-    .setFooter({ text: BRAND_FOOTER })
-    .setTimestamp();
+        '**الحالة:** 🟢 مفتوح',
+        '**الأداء:** 🟢 مستقر',
+        '**الوضع:** 🟢 يعمل بكفاءة',
+        '',
+        '**ENCLAVE RP | نراكم داخل المدينة.**'
+      ].join('\n')
+    );
 
   return { content: PING_CONTENT, embeds: [embed], allowedMentions: { parse: ['everyone'] } };
 }
 
-function scheduledRestart({ eta, reason, announcedBy }) {
-  const reasonLineEn = reason ? `\nReason: **${reason}**` : '';
-  const reasonLineAr = reason ? `\nالسبب: **${reason}**` : '';
-
+function scheduledRestart({ minutes }) {
   const embed = new EmbedBuilder()
     .setColor(COLOR_RESTART)
-    .setTitle('🛠️ Scheduled Restart — إعادة تشغيل مجدولة')
     .setDescription(
       [
-        `**English**`,
-        `The Enclave RP server will restart **${eta}**. You may be disconnected briefly — this is expected.${reasonLineEn}`,
+        '# 🟠 | إيقاف مجدول للسيرفر',
         '',
-        `**العربية**`,
-        `سيتم إعادة تشغيل سيرفر Enclave RP **${eta}**. قد تنقطع اللعبة لفترة قصيرة، وهذا أمر طبيعي.${reasonLineAr}`
+        'سيتم إيقاف السيرفر لإجراء أعمال الصيانة والتحديثات اللازمة، وسيتم إعلامكم فور الانتهاء وعودة السيرفر للعمل.',
+        '',
+        `**وقت الإيقاف:** 🟠 بعد ${minutes} دقيقة.`,
+        '',
+        '**السبب:** 🛠️ صيانة وتحديثات',
+        '**العودة:** سيتم الإعلان عنها عند الانتهاء',
+        '',
+        '**ENCLAVE RP | نعمل باستمرار على تحسين تجربتكم.**'
       ].join('\n')
-    )
-    .setFooter({ text: `${BRAND_FOOTER}${announcedBy ? ` • Announced by ${announcedBy}` : ''}` })
-    .setTimestamp();
+    );
 
   return { content: PING_CONTENT, embeds: [embed], allowedMentions: { parse: ['everyone'] } };
 }
 
-// No @everyone here, deliberately — a cancellation is a relief, not an
-// emergency, and the audience already got pinged once for the restart itself.
-function scheduledRestartSkipped({ author }) {
-  const byLineEn = author ? ` by **${author}**` : '';
-  const byLineAr = author ? ` بواسطة **${author}**` : '';
-
-  const embed = new EmbedBuilder()
-    .setColor(0x5865f2) // Discord blurple — informational, not an alert
-    .setTitle('ℹ️ Restart Cancelled — تم إلغاء إعادة التشغيل')
-    .setDescription(
-      [
-        `**English**`,
-        `The upcoming scheduled restart was cancelled${byLineEn}. No action needed.`,
-        '',
-        `**العربية**`,
-        `تم إلغاء إعادة التشغيل المجدولة القادمة${byLineAr}. لا حاجة لأي إجراء.`
-      ].join('\n')
-    )
-    .setFooter({ text: BRAND_FOOTER })
-    .setTimestamp();
-
-  return { embeds: [embed] };
+function fmtHms(totalSeconds) {
+  const totalMinutes = Math.max(0, Math.round(totalSeconds / 60));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes} mins`;
+  return `${hours} hrs, ${minutes} mins`;
 }
 
-module.exports = { serverDown, serverUp, scheduledRestart, scheduledRestartSkipped };
+/**
+ * The persistent, auto-updating status card — one message, edited in place
+ * on every refresh rather than reposted. Mirrors the structure of txAdmin's
+ * own live status embed (title/fields/banner), reskinned for Enclave RP.
+ */
+function statusCard({ online, players, maxPlayers, connectCode, nextRestartSeconds, uptimeSeconds }) {
+  const embed = new EmbedBuilder()
+    .setColor(online ? 0x57f287 : 0xed4245)
+    .setTitle('ENCLAVE RP')
+    .setDescription('Server Status')
+    .addFields(
+      { name: 'STATUS', value: online ? '🟢 Online' : '🔴 Offline', inline: false },
+      { name: 'PLAYERS', value: online ? `${players}/${maxPlayers || '?'}` : '—', inline: false },
+      { name: 'F8 CONNECT COMMAND', value: connectCode ? `connect ${connectCode}` : '—', inline: false },
+      { name: 'NEXT RESTART', value: nextRestartSeconds != null ? `in ${fmtHms(nextRestartSeconds)}` : 'Not scheduled', inline: false },
+      { name: 'UPTIME', value: online && uptimeSeconds != null ? fmtHms(uptimeSeconds) : '—', inline: false }
+    )
+    .setImage('attachment://enclave-banner.png')
+    .setFooter({ text: 'Enclave RP | Server Status • Updated every minute' })
+    .setTimestamp();
+
+  return embed;
+}
+
+module.exports = { serverDown, serverUp, scheduledRestart, statusCard };

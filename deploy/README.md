@@ -50,12 +50,13 @@ resource's `config.lua` at that instead.
 ## 3. Bot permissions
 
 Invite the bot with, at minimum, **View Channel**, **Send Messages**,
-**Embed Links** and **Mention Everyone** on the status channel — the last one
-is required or the `@everyone` in every alert silently fails to notify
-anyone. It never needs `Administrator`.
+**Embed Links**, **Attach Files** (for the status card's banner image) and
+**Mention Everyone** on the status channel — the last one is required or
+`@everyone` in the manual alerts silently fails to notify anyone. It never
+needs `Administrator`.
 
 ```
-https://discord.com/oauth2/authorize?client_id=1543975525448683580&permissions=150528&scope=bot+applications.commands
+https://discord.com/oauth2/authorize?client_id=1543975525448683580&permissions=183296&scope=bot+applications.commands
 ```
 
 ## 4. Register the slash commands

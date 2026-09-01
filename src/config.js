@@ -14,11 +14,6 @@ function listEnv(name) {
     .filter(Boolean);
 }
 
-function intListEnv(name, fallback) {
-  const nums = listEnv(name).map((n) => Number.parseInt(n, 10)).filter(Number.isFinite);
-  return nums.length ? nums : fallback;
-}
-
 // Distinct from intEnv: 0/unset means "disabled" here rather than falling
 // back to a default port, since the relay endpoint is opt-in.
 function portEnv(name) {
@@ -35,17 +30,21 @@ module.exports = {
 
   // Comma-separated — every configured code is checked on each poll and
   // whichever one answers wins, so a stale/wrong code alongside a good one
-  // is harmless rather than something that has to be picked correctly.
+  // is harmless rather than something that has to be picked correctly. The
+  // first one listed is also what the status card shows as the connect
+  // command, so keep the current/primary code first.
   fivemJoinCodes: listEnv('FIVEM_JOIN_CODE'),
 
   checkIntervalMs: intEnv('CHECK_INTERVAL_MS', 60_000),
   failureThreshold: intEnv('FAILURE_THRESHOLD', 2),
   recoveryThreshold: intEnv('RECOVERY_THRESHOLD', 1),
-  restartWindowMs: intEnv('RESTART_WINDOW_MINUTES', 30) * 60_000,
+
+  // The persistent live status card (src/statusCard.js).
+  cardUpdateIntervalMs: intEnv('CARD_UPDATE_INTERVAL_MS', 60_000),
 
   // txAdmin restart relay (see fivem/txadmin_restart_relay/ + src/restartWebhook.js).
+  // Feeds the card's "Next Restart" field — it no longer posts alerts itself.
   restartWebhookHost: (process.env.RESTART_WEBHOOK_HOST || '127.0.0.1').trim(),
   restartWebhookPort: portEnv('RESTART_WEBHOOK_PORT'),
-  restartWebhookSecret: (process.env.RESTART_WEBHOOK_SECRET || '').trim(),
-  restartMilestoneMinutes: intListEnv('RESTART_WEBHOOK_MILESTONES', [15, 1])
+  restartWebhookSecret: (process.env.RESTART_WEBHOOK_SECRET || '').trim()
 };

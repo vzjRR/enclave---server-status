@@ -2,33 +2,23 @@
 
 const config = require('./config');
 const { checkStatus } = require('./fivem');
-const embeds = require('./embeds');
 
 /*
- * Tracks the server's online/offline state across polls and posts an alert
- * on every transition. Debounced in both directions (FAILURE_THRESHOLD /
- * RECOVERY_THRESHOLD) so one dropped check does not cry wolf.
- *
- * A /scheduled-restart announcement opens a grace window
- * (RESTART_WINDOW_MINUTES): the next down->up cycle inside that window is
- * reported as "the announced restart" instead of an unplanned outage.
+ * Polls the FiveM server and tracks online/offline state, debounced in both
+ * directions (FAILURE_THRESHOLD / RECOVERY_THRESHOLD) so one dropped check
+ * doesn't flip the reported state. This module no longer posts anything to
+ * Discord on its own — the live status card (statusCard.js) reads getState()
+ * on its own timer, and the @everyone alerts are staff-triggered via slash
+ * commands, not fired automatically from a detected transition.
  */
 
 let online = null; // null = not yet established (first check after boot)
 let consecutiveFailures = 0;
 let consecutiveSuccesses = 0;
-let downSince = null;
-let restartAnnouncedAt = null;
+let lastStatus = null;
+let upSince = null; // when the server most recently became online
 let pollTimer = null;
 let lastStatusMessageId = null;
-
-function noteScheduledRestartAnnounced() {
-  restartAnnouncedAt = Date.now();
-}
-
-function isWithinRestartWindow() {
-  return restartAnnouncedAt !== null && (Date.now() - restartAnnouncedAt) <= config.restartWindowMs;
-}
 
 async function getStatusChannel(client) {
   if (!config.statusChannelId) return null;
@@ -41,15 +31,11 @@ async function getStatusChannel(client) {
 }
 
 /**
- * Sends a status message to the status channel and deletes whichever one
- * this bot posted there before it, so the channel always shows exactly one
- * current status rather than accumulating a history. Shared by every
- * sender — the automatic watcher below, the txAdmin relay, and the manual
- * /scheduled-restart command — since a restart notice needs to replace a
- * down alert just as much as a down alert needs to replace an up one.
- *
- * The new message is sent before the old one is deleted, so there's never
- * a moment with nothing posted at all if the delete is slow or fails.
+ * Sends a message to the status channel and deletes whichever one this bot
+ * posted there before it (of this kind — the manual alerts), so pings don't
+ * pile up. Used by the manual /server-down, /server-up and
+ * /scheduled-restart commands; the persistent status card manages its own
+ * single message separately and never touches this.
  */
 async function postStatusMessage(client, payload, label = 'status') {
   const channel = await getStatusChannel(client);
@@ -68,8 +54,7 @@ async function postStatusMessage(client, payload, label = 'status') {
 
   if (previousId && previousId !== sent.id) {
     channel.messages.delete(previousId).catch((error) => {
-      // Unknown Message (10008) just means it's already gone — nothing to do.
-      if (error?.code !== 10008) {
+      if (error?.code !== 10008) { // Unknown Message — already gone, fine
         console.error('Failed to delete previous status message:', error?.message || error);
       }
     });
@@ -78,8 +63,21 @@ async function postStatusMessage(client, payload, label = 'status') {
   return sent;
 }
 
-async function tick(client) {
+/** Current known state, for the status card and /status to read. */
+function getState() {
+  return {
+    online: online === true,
+    established: online !== null,
+    players: lastStatus?.players ?? 0,
+    maxPlayers: lastStatus?.maxPlayers ?? 0,
+    hostname: lastStatus?.hostname ?? '',
+    uptimeSeconds: online && upSince ? Math.floor((Date.now() - upSince) / 1000) : null
+  };
+}
+
+async function tick() {
   const status = await checkStatus(config.fivemJoinCodes);
+  lastStatus = status;
 
   if (status.online) {
     consecutiveSuccesses += 1;
@@ -89,48 +87,36 @@ async function tick(client) {
     consecutiveSuccesses = 0;
   }
 
-  // Establish the baseline silently on the very first check — a bot restart
-  // must never announce "back online" just because polling only just started.
   if (online === null) {
     online = status.online;
-    if (!online) downSince = Date.now();
+    if (online) upSince = Date.now();
     console.log(`[status] baseline: server is ${online ? 'online' : 'offline'}`);
     return;
   }
 
   if (online && !status.online && consecutiveFailures >= config.failureThreshold) {
     online = false;
-    downSince = Date.now();
-    const wasScheduledRestart = isWithinRestartWindow();
-    console.log(`[status] server went offline${wasScheduledRestart ? ' (scheduled restart)' : ''}`);
-    await postStatusMessage(client, embeds.serverDown({ hostname: status.hostname, wasScheduledRestart }), 'server-down');
+    upSince = null;
+    console.log('[status] server went offline');
     return;
   }
 
   if (!online && status.online && consecutiveSuccesses >= config.recoveryThreshold) {
     online = true;
-    const downtimeMs = downSince ? Date.now() - downSince : null;
-    const wasScheduledRestart = isWithinRestartWindow();
-    downSince = null;
-    if (wasScheduledRestart) restartAnnouncedAt = null;
-
-    console.log(`[status] server back online${wasScheduledRestart ? ' (scheduled restart complete)' : ''}`);
-    await postStatusMessage(client, embeds.serverUp({
-      hostname: status.hostname,
-      players: status.players,
-      maxPlayers: status.maxPlayers,
-      downtimeMs,
-      wasScheduledRestart
-    }), 'server-up');
+    upSince = Date.now();
+    console.log('[status] server back online');
   }
 }
 
-function start(client) {
+// Awaits the first check before returning, so a caller that starts the
+// status card right after this doesn't render one refresh of "unknown"
+// state before the baseline check has actually landed.
+async function start() {
   if (pollTimer) return;
 
-  tick(client).catch((error) => console.error('Status check failed:', error?.message || error));
+  await tick().catch((error) => console.error('Status check failed:', error?.message || error));
   pollTimer = setInterval(() => {
-    tick(client).catch((error) => console.error('Status check failed:', error?.message || error));
+    tick().catch((error) => console.error('Status check failed:', error?.message || error));
   }, config.checkIntervalMs);
 }
 
@@ -139,4 +125,4 @@ function stop() {
   pollTimer = null;
 }
 
-module.exports = { start, stop, noteScheduledRestartAnnounced, getStatusChannel, postStatusMessage };
+module.exports = { start, stop, getStatusChannel, postStatusMessage, getState };

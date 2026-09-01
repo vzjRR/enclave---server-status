@@ -3,70 +3,47 @@
 const http = require('http');
 const crypto = require('crypto');
 const config = require('./config');
-const embeds = require('./embeds');
-const statusWatcher = require('./statusWatcher');
 
 /*
  * Receives scheduled-restart events relayed from the FiveM server by the
  * txadmin_restart_relay resource (fivem/txadmin_restart_relay/), which
  * listens for txAdmin's own txAdmin:events:scheduledRestart /
- * txAdmin:events:scheduledRestartSkipped events and forwards them here as
- * an authenticated HTTP POST. This is what makes /scheduled-restart
- * automatic instead of something staff have to remember to run.
+ * txAdmin:events:scheduledRestartSkipped events and forwards them here.
  *
- * txAdmin fires scheduledRestart repeatedly as a countdown — by default at
- * 30/15/10/5/4/3/2/1 minutes before the restart — so posting on every one
- * would spam the channel with @everyone. Only the minute marks listed in
- * RESTART_WEBHOOK_MILESTONES actually produce a Discord message, once each
- * per restart cycle.
+ * This no longer posts anything to Discord — @everyone alerts are manual
+ * now (see src/commands/scheduledRestart.js). What this module does is
+ * feed the persistent status card's "NEXT RESTART" field: every
+ * scheduledRestart fire updates the countdown state below, and the card
+ * (statusCard.js) reads getNextRestartSeconds() on its own refresh timer.
  */
 
-let lastSecondsRemaining = null;
-let postedMilestones = new Set();
+let restartState = null; // { secondsRemaining, receivedAt } | null
 
-function resetCycleIfNew(secondsRemaining) {
-  // secondsRemaining counts down within one restart cycle; a jump back up
-  // means txAdmin has moved on to a later scheduled restart.
-  if (lastSecondsRemaining !== null && secondsRemaining > lastSecondsRemaining + 60) {
-    postedMilestones = new Set();
-  }
-  lastSecondsRemaining = secondsRemaining;
-}
+// Safety net: if txAdmin's countdown stops arriving (the restart happened,
+// was skipped without us hearing about it, or the relay just stopped),
+// don't let a stale countdown sit on the card forever.
+const STALE_AFTER_MS = 40 * 60 * 1000;
 
-function etaText(minutes) {
-  const en = `in ${minutes} minute${minutes === 1 ? '' : 's'}`;
-  const ar = `خلال ${minutes} دقيقة`;
-  return `${en} / ${ar}`;
-}
-
-async function handleScheduledRestart(client, payload) {
+function handleScheduledRestart(payload) {
   const secondsRemaining = Number(payload.secondsRemaining);
   if (!Number.isFinite(secondsRemaining)) return;
-
-  resetCycleIfNew(secondsRemaining);
-
-  const minutes = Math.round(secondsRemaining / 60);
-  if (!config.restartMilestoneMinutes.includes(minutes) || postedMilestones.has(minutes)) return;
-  postedMilestones.add(minutes);
-
-  await statusWatcher.postStatusMessage(
-    client,
-    embeds.scheduledRestart({ eta: etaText(minutes), reason: null, announcedBy: 'txAdmin' }),
-    'restart-scheduled'
-  );
-
-  statusWatcher.noteScheduledRestartAnnounced();
+  restartState = { secondsRemaining, receivedAt: Date.now() };
 }
 
-async function handleRestartSkipped(client, payload) {
-  postedMilestones = new Set();
-  lastSecondsRemaining = null;
+function handleRestartSkipped() {
+  restartState = null;
+}
 
-  await statusWatcher.postStatusMessage(
-    client,
-    embeds.scheduledRestartSkipped({ author: payload.author || null }),
-    'restart-skipped'
-  );
+/** Seconds until the restart, extrapolated from the last countdown fire — or null if none is known/still fresh. */
+function getNextRestartSeconds() {
+  if (!restartState) return null;
+  const elapsedMs = Date.now() - restartState.receivedAt;
+  if (elapsedMs > STALE_AFTER_MS) {
+    restartState = null;
+    return null;
+  }
+  const remaining = restartState.secondsRemaining - Math.floor(elapsedMs / 1000);
+  return remaining > 0 ? remaining : null;
 }
 
 function readBody(req, maxBytes = 16 * 1024) {
@@ -93,19 +70,17 @@ function isAuthorized(req) {
 
   const a = Buffer.from(provided);
   const b = Buffer.from(config.restartWebhookSecret);
-  // Buffers of different length can't go through timingSafeEqual.
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-/** Test seam: drop in-memory dedupe state between cases. */
+/** Test seam: drop in-memory countdown state between cases. */
 function resetState() {
-  lastSecondsRemaining = null;
-  postedMilestones = new Set();
+  restartState = null;
 }
 
-function start(client) {
+function start() {
   if (!config.restartWebhookPort) {
-    console.log('[restart-webhook] RESTART_WEBHOOK_PORT not set — the txAdmin relay endpoint is disabled (/scheduled-restart still works).');
+    console.log('[restart-webhook] RESTART_WEBHOOK_PORT not set — the txAdmin relay endpoint is disabled (the status card\'s "Next Restart" field will show "Not scheduled").');
     return null;
   }
   if (!config.restartWebhookSecret) {
@@ -131,20 +106,15 @@ function start(client) {
       return;
     }
 
-    try {
-      if (req.url === '/webhook/restart-scheduled') {
-        await handleScheduledRestart(client, payload);
-      } else if (req.url === '/webhook/restart-skipped') {
-        await handleRestartSkipped(client, payload);
-      } else {
-        res.writeHead(404).end();
-        return;
-      }
-      res.writeHead(204).end();
-    } catch (error) {
-      console.error('[restart-webhook] handler error:', error?.message || error);
-      res.writeHead(500).end();
+    if (req.url === '/webhook/restart-scheduled') {
+      handleScheduledRestart(payload);
+    } else if (req.url === '/webhook/restart-skipped') {
+      handleRestartSkipped();
+    } else {
+      res.writeHead(404).end();
+      return;
     }
+    res.writeHead(204).end();
   });
 
   server.listen(config.restartWebhookPort, config.restartWebhookHost, () => {
@@ -154,4 +124,4 @@ function start(client) {
   return server;
 }
 
-module.exports = { start, resetState };
+module.exports = { start, resetState, getNextRestartSeconds };
