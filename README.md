@@ -191,7 +191,7 @@ deletes messages it posted itself, which needs no special permission.
 | `GUILD_ID` | Enclave RP guild | Register commands instantly to one guild; the bot ignores interactions from any other. |
 | `STATUS_CHANNEL_ID` | `1536824170720133150` | Where the card lives and alerts are posted. |
 | `STAFF_ROLE_ID` | empty | Role(s), comma-separated, additionally allowed to run the three alert commands. |
-| `FIVEM_JOIN_CODE` | `zjjp6m4,dggpkvq` | The `cfx.re/join/<code>`(s) for the server being watched; first one is shown as the connect command. |
+| `FIVEM_JOIN_CODE` | `dggpkvq` | The `cfx.re/join/<code>`(s) for the server being watched; first one is shown as the connect command. |
 | `CHECK_INTERVAL_MS` | `60000` | How often the server is polled. |
 | `FAILURE_THRESHOLD` | `2` | Consecutive failed checks before the card flips to offline. |
 | `RECOVERY_THRESHOLD` | `1` | Consecutive successful checks before the card flips to online. |
