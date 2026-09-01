@@ -27,9 +27,9 @@ Where each field comes from:
 
 | Field | Source |
 | --- | --- |
-| STATUS / PLAYERS | Polled from the FiveM server itself — see [How the server is watched](#how-the-server-is-watched) below |
-| F8 CONNECT COMMAND | The first code in `FIVEM_JOIN_CODE` |
-| UPTIME | Tracked internally from the last online→offline transition this bot observed — not the game server's actual process uptime, which isn't exposed by the endpoints this bot polls |
+| STATUS / PLAYERS | txAdmin's own `/host/status` when configured (authoritative); otherwise the ordinary FiveM poll — see [How the server is watched](#how-the-server-is-watched) |
+| F8 CONNECT COMMAND | The live join code from txAdmin when available, otherwise the first code in `FIVEM_JOIN_CODE` |
+| UPTIME | The relay resource's real heartbeat when available (below); otherwise this bot's own estimate from the last online transition it observed |
 | NEXT RESTART | Fed by the optional txAdmin relay (below) — shows "Not scheduled" without it |
 
 ## Manual alerts
@@ -103,20 +103,55 @@ online/offline state, debounced in both directions
 flip the card. This state feeds the card only — it no longer triggers any
 Discord post on its own.
 
-## Optional: automatic "Next Restart" from txAdmin
+## Connecting directly to txAdmin
 
-If the FiveM server runs txAdmin — it does, txAdmin ships with FXServer —
-its own **Restart Scheduler** (Settings → General → Scheduled Restarts)
-fires internal events on a countdown before every restart it runs. The
-[`txadmin_restart_relay`](fivem/txadmin_restart_relay) FiveM resource
-listens for those and forwards them to this bot's relay endpoint
-(`src/restartWebhook.js`), which feeds the card's **NEXT RESTART** field —
-it does **not** post anything to Discord itself. Entirely optional: without
-it, NEXT RESTART just always shows "Not scheduled."
+Two independent, both optional, ways this bot pulls real data straight
+from txAdmin instead of guessing from the outside:
+
+### 1. `/host/status` — live status, players, join code
+
+txAdmin ships an official public status API for exactly this kind of
+external monitoring: `GET /host/status` on txAdmin's own port (default
+`40120`), authenticated with a token. Set `TXADMIN_URL` and
+`TXADMIN_API_TOKEN` in the bot's `.env` and every poll checks it directly —
+its answer wins for STATUS/PLAYERS/the connect code whenever it responds,
+since it's txAdmin's own tracking rather than an external guess. No FiveM
+resource needed for this part, just:
+
+1. **On the game server**, set `TXHOST_API_TOKEN` as an **environment
+   variable for the FXServer process itself** — not a `server.cfg` convar.
+   Where exactly depends on how FXServer is started there (a systemd
+   `Environment=` line, a wrapper script's `export`, or your host panel's
+   env var settings if it exposes one). 16–48 characters:
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"
+   ```
+2. Make sure txAdmin's port (`40120` by default) is reachable from this
+   bot — same firewall dance as `RESTART_WEBHOOK_PORT` (see
+   [`deploy/README.md`](deploy/README.md) if the bot and game server are
+   on different hosts/clouds).
+3. Set `TXADMIN_URL=http://GAME_SERVER_IP:40120` and
+   `TXADMIN_API_TOKEN=<the same value>` in the bot's `.env`, then restart it.
+
+Docs: <https://aka.cfx.re/txadmin-env-config>.
+
+### 2. The relay resource — next restart + real uptime
+
+`/host/status` doesn't include restart-schedule or process-uptime data —
+those come from the [`txadmin_restart_relay`](fivem/txadmin_restart_relay)
+FiveM resource, which listens for txAdmin's own restart-scheduler events
+and heartbeats its own start time (a resource reloads exactly when
+FXServer restarts, so that's a reliable uptime proxy) to this bot's relay
+endpoint (`src/restartWebhook.js`). Feeds **NEXT RESTART** and **UPTIME**
+only — it doesn't post anything to Discord itself.
 
 See [`fivem/txadmin_restart_relay/README.md`](fivem/txadmin_restart_relay/README.md)
 for the game-server-side install and [Configuration](#configuration) below
 for the bot side (`RESTART_WEBHOOK_*`).
+
+Both are entirely optional and independent of each other — without either,
+the card just falls back to the ordinary FiveM poll and its own uptime
+estimate, exactly as before.
 
 ## Setup
 
@@ -164,6 +199,8 @@ deletes messages it posted itself, which needs no special permission.
 | `RESTART_WEBHOOK_PORT` | unset (disabled) | Port for the optional txAdmin relay endpoint. |
 | `RESTART_WEBHOOK_HOST` | `127.0.0.1` | Interface the relay endpoint binds. Only widen if the game server is on a different host. |
 | `RESTART_WEBHOOK_SECRET` | empty | Shared secret the relay resource authenticates with. Required for the endpoint to start. |
+| `TXADMIN_URL` | empty | Base URL of txAdmin's web panel (e.g. `http://GAME_SERVER_IP:40120`). Both this and the token below are required to enable it. |
+| `TXADMIN_API_TOKEN` | empty | The `TXHOST_API_TOKEN` value set on the FXServer process. |
 
 ## Notes
 

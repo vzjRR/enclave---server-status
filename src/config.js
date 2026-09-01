@@ -43,8 +43,15 @@ module.exports = {
   cardUpdateIntervalMs: intEnv('CARD_UPDATE_INTERVAL_MS', 60_000),
 
   // txAdmin restart relay (see fivem/txadmin_restart_relay/ + src/restartWebhook.js).
-  // Feeds the card's "Next Restart" field — it no longer posts alerts itself.
+  // Feeds the card's "Next Restart" field and real uptime — it no longer
+  // posts alerts itself.
   restartWebhookHost: (process.env.RESTART_WEBHOOK_HOST || '127.0.0.1').trim(),
   restartWebhookPort: portEnv('RESTART_WEBHOOK_PORT'),
-  restartWebhookSecret: (process.env.RESTART_WEBHOOK_SECRET || '').trim()
+  restartWebhookSecret: (process.env.RESTART_WEBHOOK_SECRET || '').trim(),
+
+  // txAdmin's own /host/status API (see src/txadmin.js). Optional — when
+  // either is unset, the card falls back to fivem.js's own poll for
+  // online/players. No trailing slash on the URL.
+  txAdminUrl: (process.env.TXADMIN_URL || '').trim().replace(/\/+$/, ''),
+  txAdminApiToken: (process.env.TXADMIN_API_TOKEN || '').trim()
 };

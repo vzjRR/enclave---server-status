@@ -1,13 +1,21 @@
 # txadmin_restart_relay
 
-FiveM server-side resource that listens for txAdmin's own
-`txAdmin:events:scheduledRestart` / `txAdmin:events:scheduledRestartSkipped`
-events and relays them, over a shared-secret-authenticated HTTP POST, to the
-Server Status Discord bot's relay endpoint (`../../src/restartWebhook.js`)
-— which uses them to keep the bot's live status card's **NEXT RESTART**
-field accurate. It does not post anything to Discord by itself; the
-`@everyone` alerts are manual, staff-triggered commands (`/server-down`,
-`/server-up`, `/scheduled-restart`).
+FiveM server-side resource that feeds two fields on the Server Status
+Discord bot's live status card, over a shared-secret-authenticated HTTP
+POST to the bot's relay endpoint (`../../src/restartWebhook.js`):
+
+- **NEXT RESTART** — listens for txAdmin's own
+  `txAdmin:events:scheduledRestart` / `scheduledRestartSkipped` events.
+- **UPTIME** — heartbeats its own start time every few minutes; since a
+  resource reloads exactly when FXServer restarts, that's a reliable real
+  uptime, more accurate than the bot's own guess.
+
+It does not post anything to Discord by itself; the `@everyone` alerts are
+manual, staff-triggered commands (`/server-down`, `/server-up`,
+`/scheduled-restart`). For live STATUS/PLAYERS/join-code instead, see
+["Connecting directly to txAdmin"](../../README.md#connecting-directly-to-txadmin)
+in the main README — that part talks to txAdmin's own `/host/status` API
+directly and doesn't need this resource at all.
 
 ## Install
 
@@ -34,9 +42,16 @@ Every `scheduledRestart` fire updates an in-memory countdown; the status
 card reads it on its own refresh and shows "in X hrs, Y mins" instead of
 "Not scheduled" once a restart is imminent. A `scheduledRestartSkipped`
 event (an admin cancels the restart from the txAdmin panel) clears that
-countdown back to "Not scheduled." Nothing here posts a message, pings
-anyone, or touches the manual alert commands — it only ever changes what
-one field on the card shows.
+countdown back to "Not scheduled."
+
+Separately, a heartbeat every `Config.HeartbeatIntervalMs` (default 5
+minutes) sends this resource's own start timestamp; the bot computes
+uptime as `now - startedAt` and treats a heartbeat as stale (falling back
+to its own estimate) if none arrives for a couple of intervals — covering
+both an actual restart and the relay itself going quiet.
+
+Nothing here posts a message, pings anyone, or touches the manual alert
+commands — it only ever changes what two fields on the card show.
 
 ## Notes
 

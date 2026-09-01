@@ -12,17 +12,29 @@ const config = require('./config');
  *
  * This no longer posts anything to Discord — @everyone alerts are manual
  * now (see src/commands/scheduledRestart.js). What this module does is
- * feed the persistent status card's "NEXT RESTART" field: every
- * scheduledRestart fire updates the countdown state below, and the card
- * (statusCard.js) reads getNextRestartSeconds() on its own refresh timer.
+ * feed two fields on the persistent status card:
+ *
+ * - NEXT RESTART: every scheduledRestart fire updates the countdown state
+ *   below; the card reads getNextRestartSeconds() on its own refresh timer.
+ * - UPTIME: the same resource also sends a heartbeat carrying its own
+ *   start time, which — since a FiveM resource reloads exactly when
+ *   FXServer restarts, scheduled or not — is a reliable proxy for real
+ *   server uptime, more accurate than the bot's own guess based on when
+ *   it last observed the server come online.
  */
 
 let restartState = null; // { secondsRemaining, receivedAt } | null
+let heartbeatState = null; // { startedAt, receivedAt } | null
 
 // Safety net: if txAdmin's countdown stops arriving (the restart happened,
 // was skipped without us hearing about it, or the relay just stopped),
 // don't let a stale countdown sit on the card forever.
 const STALE_AFTER_MS = 40 * 60 * 1000;
+
+// The relay resource heartbeats every 5 minutes; anything older than a
+// couple of missed beats means the relay (or the server) is down, so the
+// card should fall back to the bot's own uptime estimate instead.
+const HEARTBEAT_STALE_AFTER_MS = 12 * 60 * 1000;
 
 function handleScheduledRestart(payload) {
   const secondsRemaining = Number(payload.secondsRemaining);
@@ -32,6 +44,12 @@ function handleScheduledRestart(payload) {
 
 function handleRestartSkipped() {
   restartState = null;
+}
+
+function handleHeartbeat(payload) {
+  const startedAt = Number(payload.startedAt);
+  if (!Number.isFinite(startedAt)) return;
+  heartbeatState = { startedAt, receivedAt: Date.now() };
 }
 
 /** Seconds until the restart, extrapolated from the last countdown fire — or null if none is known/still fresh. */
@@ -44,6 +62,16 @@ function getNextRestartSeconds() {
   }
   const remaining = restartState.secondsRemaining - Math.floor(elapsedMs / 1000);
   return remaining > 0 ? remaining : null;
+}
+
+/** Real server uptime from the relay's own start time — or null if no recent heartbeat. */
+function getServerUptimeSeconds() {
+  if (!heartbeatState) return null;
+  if (Date.now() - heartbeatState.receivedAt > HEARTBEAT_STALE_AFTER_MS) {
+    heartbeatState = null;
+    return null;
+  }
+  return Math.max(0, Math.floor(Date.now() / 1000 - heartbeatState.startedAt));
 }
 
 function readBody(req, maxBytes = 16 * 1024) {
@@ -73,9 +101,10 @@ function isAuthorized(req) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-/** Test seam: drop in-memory countdown state between cases. */
+/** Test seam: drop in-memory countdown/heartbeat state between cases. */
 function resetState() {
   restartState = null;
+  heartbeatState = null;
 }
 
 function start() {
@@ -110,6 +139,8 @@ function start() {
       handleScheduledRestart(payload);
     } else if (req.url === '/webhook/restart-skipped') {
       handleRestartSkipped();
+    } else if (req.url === '/webhook/heartbeat') {
+      handleHeartbeat(payload);
     } else {
       res.writeHead(404).end();
       return;
@@ -124,4 +155,4 @@ function start() {
   return server;
 }
 
-module.exports = { start, resetState, getNextRestartSeconds };
+module.exports = { start, resetState, getNextRestartSeconds, getServerUptimeSeconds };

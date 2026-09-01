@@ -2,6 +2,7 @@
 
 const config = require('./config');
 const { checkStatus } = require('./fivem');
+const { getHostStatus } = require('./txadmin');
 
 /*
  * Polls the FiveM server and tracks online/offline state, debounced in both
@@ -10,12 +11,20 @@ const { checkStatus } = require('./fivem');
  * Discord on its own — the live status card (statusCard.js) reads getState()
  * on its own timer, and the @everyone alerts are staff-triggered via slash
  * commands, not fired automatically from a detected transition.
+ *
+ * When TXADMIN_URL/TXADMIN_API_TOKEN are configured, txAdmin's own
+ * /host/status is checked alongside the ordinary FiveM poll and — since
+ * it's txAdmin's own authoritative tracking rather than an external
+ * guess — wins for online/players/join-code whenever it answers. It's
+ * purely additive: unset or unreachable, everything falls back to the
+ * existing dynamic.json/listing poll exactly as before.
  */
 
 let online = null; // null = not yet established (first check after boot)
 let consecutiveFailures = 0;
 let consecutiveSuccesses = 0;
 let lastStatus = null;
+let lastHostStatus = null;
 let upSince = null; // when the server most recently became online
 let pollTimer = null;
 let lastStatusMessageId = null;
@@ -68,18 +77,27 @@ function getState() {
   return {
     online: online === true,
     established: online !== null,
-    players: lastStatus?.players ?? 0,
-    maxPlayers: lastStatus?.maxPlayers ?? 0,
-    hostname: lastStatus?.hostname ?? '',
+    players: lastHostStatus?.players ?? lastStatus?.players ?? 0,
+    maxPlayers: lastHostStatus?.maxPlayers ?? lastStatus?.maxPlayers ?? 0,
+    hostname: lastStatus?.hostname || lastHostStatus?.projectName || '',
+    joinCode: lastHostStatus?.joinCode || null,
     uptimeSeconds: online && upSince ? Math.floor((Date.now() - upSince) / 1000) : null
   };
 }
 
 async function tick() {
-  const status = await checkStatus(config.fivemJoinCodes);
+  const [status, hostStatus] = await Promise.all([
+    checkStatus(config.fivemJoinCodes),
+    getHostStatus(config.txAdminUrl, config.txAdminApiToken)
+  ]);
   lastStatus = status;
+  lastHostStatus = hostStatus;
 
-  if (status.online) {
+  // txAdmin's own tracking wins when it answers — it's authoritative,
+  // not an external guess. Falls back to the ordinary poll otherwise.
+  const rawOnline = hostStatus ? hostStatus.online : status.online;
+
+  if (rawOnline) {
     consecutiveSuccesses += 1;
     consecutiveFailures = 0;
   } else {
@@ -88,20 +106,20 @@ async function tick() {
   }
 
   if (online === null) {
-    online = status.online;
+    online = rawOnline;
     if (online) upSince = Date.now();
     console.log(`[status] baseline: server is ${online ? 'online' : 'offline'}`);
     return;
   }
 
-  if (online && !status.online && consecutiveFailures >= config.failureThreshold) {
+  if (online && !rawOnline && consecutiveFailures >= config.failureThreshold) {
     online = false;
     upSince = null;
     console.log('[status] server went offline');
     return;
   }
 
-  if (!online && status.online && consecutiveSuccesses >= config.recoveryThreshold) {
+  if (!online && rawOnline && consecutiveSuccesses >= config.recoveryThreshold) {
     online = true;
     upSince = Date.now();
     console.log('[status] server back online');

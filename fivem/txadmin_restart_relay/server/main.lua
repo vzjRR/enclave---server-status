@@ -1,18 +1,23 @@
 --[[
-    Listens for txAdmin's own scheduled-restart events and relays them to
-    the Server Status Discord bot, which turns them into a bilingual
-    @everyone announcement in the status channel.
+    Feeds two fields on the Server Status bot's live status card:
 
-    txAdmin:events:scheduledRestart fires repeatedly as a countdown (at
-    30/15/10/5/4/3/2/1 minutes before the restart) -- every fire is
-    forwarded here; the bot decides which of those actually become a
-    Discord message (RESTART_WEBHOOK_MILESTONES in its .env), so this
-    resource does not need to know or duplicate that filtering logic.
+    1. NEXT RESTART -- listens for txAdmin's own scheduled-restart events
+       and relays them. txAdmin:events:scheduledRestart fires repeatedly as
+       a countdown (at 30/15/10/5/4/3/2/1 minutes before the restart);
+       every fire is forwarded, and the bot extrapolates the live countdown
+       from whichever one arrived last.
+    2. UPTIME -- a heartbeat sent every few minutes carrying this
+       resource's own start time. A resource reloads exactly when FXServer
+       restarts (scheduled or not), so that timestamp is a reliable stand-in
+       for real server uptime -- more accurate than the bot guessing from
+       when it last observed the server respond.
 
-    Fire-and-forget: a failed relay (bot offline, wrong URL) is logged to
-    the server console and otherwise ignored -- it never affects the
-    restart itself.
+    Fire-and-forget throughout: a failed relay (bot offline, wrong URL) is
+    logged to the server console and otherwise ignored -- none of this
+    affects the game server itself.
 ]]
+
+local SERVER_STARTED_AT = os.time()
 
 local function relay(path, bodyTable)
     PerformHttpRequest(Config.RelayUrl .. path, function(status, body, headers)
@@ -37,4 +42,11 @@ AddEventHandler('txAdmin:events:scheduledRestartSkipped', function(payload)
         temporary = payload and payload.temporary,
         author = payload and payload.author
     })
+end)
+
+CreateThread(function()
+    while true do
+        relay('/webhook/heartbeat', { startedAt = SERVER_STARTED_AT })
+        Wait(Config.HeartbeatIntervalMs)
+    end
 end)

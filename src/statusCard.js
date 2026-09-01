@@ -30,8 +30,10 @@ const BANNER_ATTACHMENT_NAME = 'enclave-banner.png';
 let cardMessageId = null;
 let refreshTimer = null;
 
-function connectCode() {
-  return config.fivemJoinCodes[0] || null;
+function connectCode(state) {
+  // The live code from txAdmin's own /host/status, when available, is the
+  // actual current one — more trustworthy than a hand-maintained env var.
+  return state.joinCode || config.fivemJoinCodes[0] || null;
 }
 
 function buildEmbed() {
@@ -40,9 +42,11 @@ function buildEmbed() {
     online: state.online,
     players: state.players,
     maxPlayers: state.maxPlayers,
-    connectCode: connectCode(),
+    connectCode: connectCode(state),
     nextRestartSeconds: restartWebhook.getNextRestartSeconds(),
-    uptimeSeconds: state.uptimeSeconds
+    // Real uptime from the relay's heartbeat wins when it's fresh; falls
+    // back to the bot's own online-since estimate otherwise.
+    uptimeSeconds: restartWebhook.getServerUptimeSeconds() ?? state.uptimeSeconds
   });
 }
 

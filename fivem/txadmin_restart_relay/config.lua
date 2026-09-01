@@ -22,3 +22,9 @@ Config.SharedSecret = GetConvar('txadmin_restart_relay_secret', 'CHANGE_ME')
 if Config.SharedSecret == 'CHANGE_ME' then
     print('^1[txadmin_restart_relay] txadmin_restart_relay_secret is not set in server.cfg — every relay request will be rejected (401) until it is.^7')
 end
+
+-- How often to send the uptime heartbeat, in milliseconds. The bot treats
+-- a heartbeat as stale after roughly 2.5x this interval, so raising it
+-- much past the default makes the card fall back to its own (less
+-- accurate) uptime estimate sooner after a missed beat.
+Config.HeartbeatIntervalMs = 5 * 60000
