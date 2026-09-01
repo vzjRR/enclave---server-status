@@ -76,22 +76,33 @@ function fmtHms(totalSeconds) {
   return `${hours} hrs, ${minutes} mins`;
 }
 
+/** Wraps a value as inline code so it renders as a copyable chip, matching the txAdmin reference card. */
+function codeChip(value) {
+  return `\`${value}\``;
+}
+
 /**
  * The persistent, auto-updating status card — one message, edited in place
  * on every refresh rather than reposted. Mirrors the structure of txAdmin's
  * own live status embed (title/fields/banner), reskinned for Enclave RP.
  */
 function statusCard({ online, players, maxPlayers, connectCode, nextRestartSeconds, uptimeSeconds }) {
+  const statusValue = online ? '🟢 Online' : '🔴 Offline';
+  const playersValue = online ? `${players}/${maxPlayers || '?'}` : '—';
+  const connectValue = connectCode ? `connect ${connectCode}` : '—';
+  const restartValue = nextRestartSeconds != null ? `in ${fmtHms(nextRestartSeconds)}` : 'Not scheduled';
+  const uptimeValue = online && uptimeSeconds != null ? fmtHms(uptimeSeconds) : '—';
+
   const embed = new EmbedBuilder()
     .setColor(online ? 0x57f287 : 0xed4245)
     .setTitle('ENCLAVE RP')
-    .setDescription('Server Status')
+    .setDescription('**Server Status**')
     .addFields(
-      { name: 'STATUS', value: online ? '🟢 Online' : '🔴 Offline', inline: false },
-      { name: 'PLAYERS', value: online ? `${players}/${maxPlayers || '?'}` : '—', inline: false },
-      { name: 'F8 CONNECT COMMAND', value: connectCode ? `connect ${connectCode}` : '—', inline: false },
-      { name: 'NEXT RESTART', value: nextRestartSeconds != null ? `in ${fmtHms(nextRestartSeconds)}` : 'Not scheduled', inline: false },
-      { name: 'UPTIME', value: online && uptimeSeconds != null ? fmtHms(uptimeSeconds) : '—', inline: false }
+      { name: 'STATUS', value: codeChip(statusValue), inline: false },
+      { name: 'PLAYERS', value: codeChip(playersValue), inline: false },
+      { name: 'F8 CONNECT COMMAND', value: codeChip(connectValue), inline: false },
+      { name: 'NEXT RESTART', value: codeChip(restartValue), inline: false },
+      { name: 'UPTIME', value: codeChip(uptimeValue), inline: false }
     )
     .setImage('attachment://enclave-banner.png')
     .setFooter({ text: 'Enclave RP | Server Status • Updated every minute' })
