@@ -32,6 +32,14 @@ async function getHostStatus(baseUrl, token) {
     if (!response.ok) return null;
 
     const data = await response.json();
+
+    // txAdmin's own auth failures (bad/missing token, endpoint disabled)
+    // come back as HTTP 200 with an { error, desc, docs } body rather than
+    // a 4xx — response.ok alone can't tell a real status payload from one
+    // of those. Trusting it anyway would read "status: undefined" as
+    // "not online" and wrongly override a correct direct-poll result.
+    if (typeof data.error === 'string' || typeof data.status !== 'string') return null;
+
     return {
       online: data.status === 'ONLINE',
       players: Number(data.playerCount) || 0,
