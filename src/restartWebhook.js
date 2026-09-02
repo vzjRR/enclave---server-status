@@ -16,6 +16,12 @@ const config = require('./config');
  *
  * - NEXT RESTART: every scheduledRestart fire updates the countdown state
  *   below; the card reads getNextRestartSeconds() on its own refresh timer.
+ *   txAdmin only fires that event starting 30 minutes before the restart
+ *   though, so outside that window getNextRestartSeconds() falls back to
+ *   computing the countdown directly from RESTART_SCHEDULE_TIMES — the
+ *   daily schedule this bot is told about, kept in sync by hand with
+ *   whatever's actually configured in txAdmin. The live event, when it's
+ *   arrived recently, always wins over that estimate since it's authoritative.
  * - UPTIME: the same resource also sends a heartbeat carrying its own
  *   start time, which — since a FiveM resource reloads exactly when
  *   FXServer restarts, scheduled or not — is a reliable proxy for real
@@ -52,16 +58,57 @@ function handleHeartbeat(payload) {
   heartbeatState = { startedAt, receivedAt: Date.now() };
 }
 
-/** Seconds until the restart, extrapolated from the last countdown fire — or null if none is known/still fresh. */
-function getNextRestartSeconds() {
-  if (!restartState) return null;
-  const elapsedMs = Date.now() - restartState.receivedAt;
-  if (elapsedMs > STALE_AFTER_MS) {
-    restartState = null;
-    return null;
+/**
+ * Seconds until the next occurrence of any of the "HH:MM" times in
+ * RESTART_SCHEDULE_TIMES, interpreted in RESTART_SCHEDULE_UTC_OFFSET_MINUTES.
+ * Always returns a value once a schedule is configured, however far off —
+ * this is what lets the card show "in 2 hrs, 34 mins" long before txAdmin's
+ * own countdown event would ever fire.
+ */
+function computeScheduledRestartSeconds(times, utcOffsetMinutes) {
+  if (!times.length) return null;
+
+  const offsetMs = utcOffsetMinutes * 60_000;
+  const now = Date.now();
+  const localNow = new Date(now + offsetMs);
+  const localMidnight = Date.UTC(localNow.getUTCFullYear(), localNow.getUTCMonth(), localNow.getUTCDate());
+
+  let best = null;
+  for (const time of times) {
+    const [hours, minutes] = time.split(':').map(Number);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) continue;
+
+    // Check both today's and tomorrow's occurrence — "now" might be past
+    // today's time, in which case only tomorrow's is still ahead.
+    for (const dayOffsetMs of [0, 86_400_000]) {
+      const candidateUtcMs = localMidnight + dayOffsetMs + hours * 3_600_000 + minutes * 60_000 - offsetMs;
+      const secondsUntil = Math.floor((candidateUtcMs - now) / 1000);
+      if (secondsUntil > 0 && (best === null || secondsUntil < best)) {
+        best = secondsUntil;
+      }
+    }
   }
-  const remaining = restartState.secondsRemaining - Math.floor(elapsedMs / 1000);
-  return remaining > 0 ? remaining : null;
+  return best;
+}
+
+/**
+ * Seconds until the restart. Prefers the live countdown from txAdmin's own
+ * event when one has arrived recently (authoritative, accounts for the
+ * restart actually running a little early/late) — falls back to the known
+ * daily schedule otherwise, which is the only source available outside
+ * txAdmin's 30-minutes-before firing window.
+ */
+function getNextRestartSeconds() {
+  if (restartState) {
+    const elapsedMs = Date.now() - restartState.receivedAt;
+    if (elapsedMs > STALE_AFTER_MS) {
+      restartState = null;
+    } else {
+      const remaining = restartState.secondsRemaining - Math.floor(elapsedMs / 1000);
+      if (remaining > 0) return remaining;
+    }
+  }
+  return computeScheduledRestartSeconds(config.restartScheduleTimes, config.restartScheduleUtcOffsetMinutes);
 }
 
 /** Real server uptime from the relay's own start time — or null if no recent heartbeat. */

@@ -30,7 +30,7 @@ Where each field comes from:
 | STATUS / PLAYERS | txAdmin's own `/host/status` when configured (authoritative); otherwise the ordinary FiveM poll — see [How the server is watched](#how-the-server-is-watched) |
 | F8 CONNECT COMMAND | The live join code from txAdmin when available, otherwise the first code in `FIVEM_JOIN_CODE` |
 | UPTIME | The relay resource's real heartbeat when available (below); otherwise this bot's own estimate from the last online transition it observed |
-| NEXT RESTART | Fed by the optional txAdmin relay (below) — shows "Not scheduled" without it |
+| NEXT RESTART | `RESTART_SCHEDULE_TIMES` (below) computed directly — always shows a countdown once configured. The relay's live txAdmin countdown overrides it whenever fresh (last 30 min before the restart), for a slightly more precise number. Shows "Not scheduled" only if neither is set up. |
 
 ## Manual alerts
 
@@ -199,6 +199,8 @@ deletes messages it posted itself, which needs no special permission.
 | `RESTART_WEBHOOK_PORT` | unset (disabled) | Port for the optional txAdmin relay endpoint. |
 | `RESTART_WEBHOOK_HOST` | `127.0.0.1` | Interface the relay endpoint binds. Only widen if the game server is on a different host. |
 | `RESTART_WEBHOOK_SECRET` | empty | Shared secret the relay resource authenticates with. Required for the endpoint to start. |
+| `RESTART_SCHEDULE_TIMES` | `06:00,18:00` | Daily restart times ("HH:MM", comma-separated) the bot itself knows about, so the card always shows a countdown rather than only within txAdmin's 30-minute pre-restart window. Keep in sync by hand with txAdmin's actual schedule. |
+| `RESTART_SCHEDULE_UTC_OFFSET_MINUTES` | `240` | Timezone for the times above, as minutes offset from UTC. Default is Oman time (UTC+4). |
 | `TXADMIN_URL` | empty | Base URL of txAdmin's web panel (e.g. `http://GAME_SERVER_IP:40120`). Both this and the token below are required to enable it. |
 | `TXADMIN_API_TOKEN` | empty | The `TXHOST_API_TOKEN` value set on the FXServer process. |
 
